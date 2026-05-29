@@ -78,7 +78,7 @@ class LanguageRange(Parseable):
     __repr__ = repr_slots
 
     def __hash__(self) -> int:
-        return hash(self.subtags())
+        return hash(tuple(self.subtags()))
 
     def describe(self) -> str:
         return repr(self)

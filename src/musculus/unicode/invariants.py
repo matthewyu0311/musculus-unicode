@@ -5,58 +5,31 @@ Check the data types and convert as necessary when using.
 
 Also see jamo.py for Jamo."""
 
-from .util import CodePoint, LooseMatchStrEnum, PropNameXML
+from typing import Literal
 
-# U+0300 COMBINING GRAVE ACCENT (gc=Mn, ccc=230) is the first code point with non-zero CCC
-MAX_CCC_0 = CodePoint(0x02FF)
+from musculus.util.parse import CodePoint, LooseMatchStrEnum, to_code_point
 
-PROP_ALPHABETIC = PropNameXML("Alpha")
-PROP_BIDI_MIRRORED = PropNameXML("Bidi_M")
-PROP_CANONICAL_COMBINING_CLASS = PropNameXML("ccc")
-PROP_FULL_COMPOSITION_EXCLUSION = PropNameXML("Comp_Ex")
-PROP_CHANGES_WHEN_NFKC_CASEFOLDED = PropNameXML("CWKCF")
-PROP_EMOJI_MODIFIER = PropNameXML("EMod")
-PROP_EXTENDED_PICTOGRAPHIC = PropNameXML("ExtPict")
-PROP_DEFAULT_IGNORABLE_CODE_POINT = PropNameXML("DI")
-PROP_DECOMPOSITION_TYPE = PropNameXML("dt")
-PROP_GENERAL_CATEGORY = PropNameXML("gc")
-PROP_GRAPHEME_CLUSTER_BREAK = PropNameXML("GCB")
-PROP_GRAPHEME_EXTEND = PropNameXML("Gr_Ext")
-PROP_HANGUL_SYLLABLE_TYPE = PropNameXML("hst")
-PROP_IDEOGRAPHIC = PropNameXML("Ideo")
-PROP_INDIC_CONJUNCT_BREAK = PropNameXML("InCB")
-PROP_INDIC_SYLLABIC_CATEGORY = PropNameXML("InSC")
-PROP_JAMO_SHORT_NAME = PropNameXML("JSN")
-PROP_LINE_BREAK = PropNameXML("lb")
-PROP_LOWERCASE = PropNameXML("Lower")
-PROP_NAME = PropNameXML("na")
-PROP_UNICODE_1_NAME = PropNameXML("na1")
-PROP_NAME_ALIAS = PropNameXML("Name_Alias")
-PROP_NFC_QC = PropNameXML("NFC_QC")
-PROP_NFD_QC = PropNameXML("NFD_QC")
-PROP_NFKC_CF = PropNameXML("NFKC_CF")
-PROP_NFKC_QC = PropNameXML("NFKC_QC")
-PROP_NFKC_SCF = PropNameXML("NFKC_SCF")
-PROP_NFKD_QC = PropNameXML("NFKD_QC")
-PROP_PREPENDED_CONCATENATION_MARK = PropNameXML("PCM")
-PROP_SENTENCE_BREAK = PropNameXML("SB")
-PROP_SCRIPT = PropNameXML("sc")
-PROP_SENTENCE_TERMINAL = PropNameXML("STerm")
-PROP_SCRIPT_EXTENSIONS = PropNameXML("scx")
-PROP_UPPERCASE = PropNameXML("Upper")
-PROP_WORD_BREAK = PropNameXML("WB")
-PROP_WHITE_SPACE = PropNameXML("WSpace")
-PROP_NONCHARACTER_CODE_POINT = PropNameXML("NChar")
-PROP_ISO_COMMENT = PropNameXML("isc")
-PROP_PATTERN_SYNTAX = PropNameXML("Pat_Syn")
-PROP_PATTERN_WHITE_SPACE = PropNameXML("Pat_WS")
-PROP_HYPHEN = PropNameXML("Hyphen")
+PROP_EMOJI = "Emoji"
+PROP_EMOJI_PRESENTATION = "Emoji_Presentation"
+PROP_EMOJI_MODIFIER_BASE = "Emoji_Modifier_Base"
+PROP_EXTENDED_PICTOGRAPHIC = "Extended_Pictographic"
+PROP_GRAPHEME_CLUSTER_BREAK = "GCB"
+PROP_JAMO_SHORT_NAME = "JSN"
+PROP_LINE_BREAK = "lb"
+PROP_UNICODE_1_NAME = "na1"
+PROP_SENTENCE_BREAK = "SB"
+PROP_SCRIPT = "sc"
+PROP_WORD_BREAK = "WB"
+PROP_NONCHARACTER_CODE_POINT = "NChar"
+PROP_ISO_COMMENT = "isc"
+PROP_PATTERN_SYNTAX = "Pat_Syn"
+PROP_PATTERN_WHITE_SPACE = "Pat_WS"
+PROP_HYPHEN = "Hyphen"
 
 CP_ZWNJ = CodePoint(0x200C)
-ZWNJ = chr(CP_ZWNJ)
+ZWNJ = "\u200c"
 CP_ZWJ = CodePoint(0x200D)
-ZWJ = chr(CP_ZWJ)
-
+ZWJ = "\u200d"
 
 
 class GeneralCategory(LooseMatchStrEnum):
@@ -104,24 +77,15 @@ class GeneralCategory(LooseMatchStrEnum):
     SPACE_SEPARATOR = "Zs"
 
 
-# gc = Cc
-CONTROL_CHARS = [range(0x0000, 0x0020), range(0x007F, 0x00A0)]
-
-# gc = Co
-PRIVATE_USE_CHARS = [
-    range(0xE000, 0xF8FF + 1),
-    range(0xF0000, 0xFFFFD + 1),
-    range(0x100000, 0x10FFFD + 1),
-]
-
-# gc = Cs
-SURRROGATE_CODE_POINTS = range(0xD800, 0xDFFF + 1)
-
-
 NONCHARACTER_CODE_POINTS = [
     range(0xFDD0, 0xFDF0),
     *[(x + 0xFFFE, x + 0xFFFF) for x in range(0x0, 0x110000, 0x10000)],
 ]
+
+def is_noncharacter_code_point(cp: int | str, /) -> bool:
+    cp = to_code_point(cp)
+    return any(cp in r for r in NONCHARACTER_CODE_POINTS)
+
 
 # Ranges of code points which are Pattern_Syntax
 PATTERN_SYNTAX = [
@@ -155,6 +119,12 @@ PATTERN_SYNTAX = [
     range(0xFE45, 0xFE46 + 1),
 ]
 
+
+def is_pattern_syntax(cp: int | str, /) -> bool:
+    cp = to_code_point(cp)
+    return any(cp in r for r in PATTERN_SYNTAX)
+
+
 # Code points which are Pattern_White_Space
 PATTERN_WHITE_SPACE = [
     0x0009,
@@ -169,6 +139,11 @@ PATTERN_WHITE_SPACE = [
     0x2028,
     0x2029,
 ]
+
+
+def is_pattern_white_space(cp: int | str, /) -> bool:
+    return to_code_point(cp) in PATTERN_WHITE_SPACE
+
 
 #: Deprecated
 HYPHEN = [
@@ -185,6 +160,9 @@ HYPHEN = [
     0xFF65,
 ]
 
+
+def is_hyphen(cp: int | str, /) -> bool:
+    return to_code_point(cp) in HYPHEN
 
 UNICODE_1_NAME = {
     0x0000: "NULL",
@@ -2167,8 +2145,14 @@ UNICODE_1_NAME = {
     0xFFE4: "FULLWIDTH BROKEN VERTICAL BAR",
 }
 
-# isc
-ISO_COMMENT = ""
+
+def unicode_1_name(cp: int | str, /) -> str | None:
+    return UNICODE_1_NAME.get(to_code_point(cp), None)
+
+
+def iso_comment(cp: int | str, /) -> Literal[""]:
+    cp = to_code_point(cp)
+    return ""
 
 
 IMMUTABLE_PROPERTIES = {
@@ -2180,3 +2164,215 @@ IMMUTABLE_PROPERTIES = {
     PROP_PATTERN_SYNTAX,
     PROP_PATTERN_WHITE_SPACE,
 }
+
+# Implements algorithmic Conjoining Jamo Behavior.
+# This is another example of hardcoded data guaranteed by Unicode Stability Policy.
+
+# Precomposed syllables
+SBASE = 0xAC00
+SCOUNT = 11172
+LBASE = 0x1100
+VBASE = 0x1161
+TBASE = 0x11A7
+LCOUNT = 19
+VCOUNT = 21
+TCOUNT = 28
+NCOUNT = 588
+
+SLAST = SBASE + SCOUNT - 1
+
+
+# JSN
+# This is an exceptional contributory property
+class JamoShortName(LooseMatchStrEnum):
+    A = "A"
+    AE = "AE"
+    B = "B"
+    BB = "BB"
+    BS = "BS"
+    C = "C"
+    D = "D"
+    DD = "DD"
+    E = "E"
+    EO = "EO"
+    EU = "EU"
+    G = "G"
+    GG = "GG"
+    GS = "GS"
+    H = "H"
+    I = "I"
+    J = "J"
+    JJ = "JJ"
+    K = "K"
+    L = "L"
+    LB = "LB"
+    LG = "LG"
+    LH = "LH"
+    LM = "LM"
+    LP = "LP"
+    LS = "LS"
+    LT = "LT"
+    M = "M"
+    N = "N"
+    NG = "NG"
+    NH = "NH"
+    NJ = "NJ"
+    O = "O"
+    OE = "OE"
+    P = "P"
+    R = "R"
+    S = "S"
+    SS = "SS"
+    T = "T"
+    U = "U"
+    WA = "WA"
+    WAE = "WAE"
+    WE = "WE"
+    WEO = "WEO"
+    WI = "WI"
+    YA = "YA"
+    YAE = "YAE"
+    YE = "YE"
+    YEO = "YEO"
+    YI = "YI"
+    YO = "YO"
+    YU = "YU"
+
+
+JAMO_SHORT_NAMES = {
+    0x1100: JamoShortName.G,
+    0x1101: JamoShortName.GG,
+    0x1102: JamoShortName.N,
+    0x1103: JamoShortName.D,
+    0x1104: JamoShortName.DD,
+    0x1105: JamoShortName.R,
+    0x1106: JamoShortName.M,
+    0x1107: JamoShortName.B,
+    0x1108: JamoShortName.BB,
+    0x1109: JamoShortName.S,
+    0x110A: JamoShortName.SS,
+    # 0x110B: ""    ,
+    0x110C: JamoShortName.J,
+    0x110D: JamoShortName.JJ,
+    0x110E: JamoShortName.C,
+    0x110F: JamoShortName.K,
+    0x1110: JamoShortName.T,
+    0x1111: JamoShortName.P,
+    0x1112: JamoShortName.H,
+    0x1161: JamoShortName.A,
+    0x1162: JamoShortName.AE,
+    0x1163: JamoShortName.YA,
+    0x1164: JamoShortName.YAE,
+    0x1165: JamoShortName.EO,
+    0x1166: JamoShortName.E,
+    0x1167: JamoShortName.YEO,
+    0x1168: JamoShortName.YE,
+    0x1169: JamoShortName.O,
+    0x116A: JamoShortName.WA,
+    0x116B: JamoShortName.WAE,
+    0x116C: JamoShortName.OE,
+    0x116D: JamoShortName.YO,
+    0x116E: JamoShortName.U,
+    0x116F: JamoShortName.WEO,
+    0x1170: JamoShortName.WE,
+    0x1171: JamoShortName.WI,
+    0x1172: JamoShortName.YU,
+    0x1173: JamoShortName.EU,
+    0x1174: JamoShortName.YI,
+    0x1175: JamoShortName.I,
+    0x11A8: JamoShortName.G,
+    0x11A9: JamoShortName.GG,
+    0x11AA: JamoShortName.GS,
+    0x11AB: JamoShortName.N,
+    0x11AC: JamoShortName.NJ,
+    0x11AD: JamoShortName.NH,
+    0x11AE: JamoShortName.D,
+    0x11AF: JamoShortName.L,
+    0x11B0: JamoShortName.LG,
+    0x11B1: JamoShortName.LM,
+    0x11B2: JamoShortName.LB,
+    0x11B3: JamoShortName.LS,
+    0x11B4: JamoShortName.LT,
+    0x11B5: JamoShortName.LP,
+    0x11B6: JamoShortName.LH,
+    0x11B7: JamoShortName.M,
+    0x11B8: JamoShortName.B,
+    0x11B9: JamoShortName.BS,
+    0x11BA: JamoShortName.S,
+    0x11BB: JamoShortName.SS,
+    0x11BC: JamoShortName.NG,
+    0x11BD: JamoShortName.J,
+    0x11BE: JamoShortName.C,
+    0x11BF: JamoShortName.K,
+    0x11C0: JamoShortName.T,
+    0x11C1: JamoShortName.P,
+    0x11C2: JamoShortName.H,
+}
+
+
+def jamo_short_name(cp: int | str, /) -> JamoShortName | None:
+    return JAMO_SHORT_NAMES.get(to_code_point(cp), None)
+
+
+def is_jamo_syllable(cp: int | str, /) -> bool:
+    return SBASE <= to_code_point(cp) <= SLAST
+
+
+def jamo_syllable_index(cp: int | str, /) -> int:
+    return to_code_point(cp) - SBASE
+
+
+def jamo_arithmetic_decomposition_mapping(s: CodePoint) -> tuple[CodePoint, CodePoint]:
+    s_index = s - SBASE
+    if not 0 <= s_index < SCOUNT:
+        raise ValueError(f"Not a Hangul syllable: U+{s:04X}")
+    t_index = s_index % TCOUNT
+
+    if t_index:
+        _lv, t_index = divmod(s_index, TCOUNT)
+        lv_index = _lv * TCOUNT
+
+        lv_part = SBASE + lv_index
+        t_part = TBASE + t_index
+        return (lv_part, t_part)  # type: ignore
+    else:
+        l_index, _v = divmod(s_index, NCOUNT)
+        v_index = _v // TCOUNT
+
+        l_part = LBASE + l_index
+        v_part = VBASE + v_index
+        return (l_part, v_part)  # type: ignore
+
+
+def jamo_full_canonical_decomposition(
+    s: CodePoint,
+) -> tuple[CodePoint, CodePoint] | tuple[CodePoint, CodePoint, CodePoint]:
+    s_index = s - SBASE
+    if not 0 <= s_index < SCOUNT:
+        raise ValueError(f"Not a Hangul syllable: U+{s:04X}")
+    l_index, _v = divmod(s_index, NCOUNT)
+    v_index = _v // TCOUNT
+    t_index = s_index % TCOUNT
+
+    l_part = LBASE + l_index
+    v_part = VBASE + v_index
+    if t_index > 0:
+        t_part = TBASE + t_index
+        return (l_part, v_part, t_part)  # type: ignore
+    return (l_part, v_part)  # type: ignore
+
+
+def jamo_arithmetic_primary_composite_mapping(
+    l_part: CodePoint, v_part: CodePoint, t_part: CodePoint = CodePoint(TBASE)
+) -> CodePoint:
+    l_index = l_part - LBASE
+    v_index = v_part - VBASE
+    lv_index = l_index * NCOUNT + v_index * TCOUNT
+    t_index = t_part - TBASE
+    result = SBASE + lv_index + t_index
+    if not 0 <= result < SCOUNT:
+        raise ValueError(f"Not a Hangul syllable: U+{result:04X}")
+    return CodePoint(result)
+
+
+# Jamo character name generation is not implemented; just use unicodedata.name()

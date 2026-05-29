@@ -1,17 +1,23 @@
-from array import array
-from collections.abc import Callable, Iterable, Set
+from collections.abc import Container, Iterable, Sequence, Set
+from functools import lru_cache
 from typing import TYPE_CHECKING
+from unicodedata import category
 
-from ..resources.ucd import PVA_PATH, SCRIPT_EXTENSIONS_PATH, SCRIPTS_PATH
-from .combining import combining_character_sequence
-from .util import (
-    MAX_UNICODE,
-    LooseMatchStrEnum,
-    TwoStageTable,
-    dict_from_pva,
-    to_code_point,
-    ucd_tokenize,
-)
+from musculus.util.parse import LooseMatchStrEnum, to_code_point
+
+from .invariants import PROP_SCRIPT
+from .segmentation import Grapheme, Word
+from ..resources.ucd import SCRIPT_EXTENSIONS_PATH, SCRIPTS_PATH
+from ..util.ucd import get_ucd_table, ucd_tokenize
+
+type SCXSet = Set[ScriptProperty]
+
+# NOTE: There are more script subtags in the Language Subtag Registry than in UCD PVA.
+# Reconciling the two without circular imports is difficult and not worth the effort.
+# (Language Subtag Registry contains way too many things to make enums with)
+
+# Fortunately both ScriptSubtag and ScriptProperty are subtypes of string,
+# and as long as ScriptSubtag("Xxxx") == ScriptProperty("Xxxx"), we're happy.
 
 if TYPE_CHECKING:
 
@@ -193,82 +199,48 @@ if TYPE_CHECKING:
         COMMON = "Zyyy"
         UNKNOWN = "Zzzz"
 
-    # Typecode for array storage
-    _typecode = "B"
-else:
-    with PVA_PATH.open("r", encoding="utf-8", errors="strict") as pva:
-        ScriptProperty = LooseMatchStrEnum("ScriptProperty", dict_from_pva(pva, "sc"))
 
-_SCRIPT_PROP_LIST = list(ScriptProperty)
-_SCRIPT_PROP_INDICES = {v: i for i, v in enumerate(_SCRIPT_PROP_LIST)}
-if not TYPE_CHECKING:
-    _typecode = "B" if len(_SCRIPT_PROP_LIST) <= 256 else "H"
-_SC_UNKNOWN_INDEX = _SCRIPT_PROP_INDICES[ScriptProperty.UNKNOWN]
-_SC_SCX_SETS = [frozenset({sc}) for sc in ScriptProperty]
-
-# Performance tuning of the two-stage table
-# Each plane officially has 65536 code points
-# The more bits per plane, the faster the lookup performance tends to be
-# but also the more space wasted
-
-# _BITS_PER_PLANE : sum(getsizeof(x) for x in _SC_ARRAYS.values())
-# The storage efficiency depends on the Unicode version
-# For UCD 17.0:
-# 21: 2097232 bytes
-# 20: 1048656 bytes
-# 19: 1048376 bytes
-# 18:  524448 bytes
-# 17:  393456 bytes
-# 16:  328080 bytes
-# 15:  262784 bytes
-# 14:  230496 bytes
-# 14 compressed: 197568 bytes
-# 13:  223344 bytes
-# 12:  208800 bytes
-# 11:  195776 bytes
-# 10:  193200 bytes
-#  9:  201280 bytes
-#  8:  223440 bytes
-
-_BITS_PER_PLANE = 14
-_tst = TwoStageTable(
-    default=_SC_UNKNOWN_INDEX, bits_per_plane=_BITS_PER_PLANE, typecode=_typecode
+ScriptProperty, _sc_table, sc = get_ucd_table(
+    SCRIPTS_PATH,
+    PROP_SCRIPT,
+    "ScriptProperty",
+    bits_per_plane=14,
+    compress=[(0x20000, 0x3FFFF)],
 )
 
+# Unicode regular expressions have this form:
+# ((Greek | Common) (Inherited | Me | Mn)*)*
+def script_breaker(s: str, /, scripts: Container[ScriptProperty]) -> Iterable[str]:
+    """Implements the most common form of Unicode regular expression:
+    `((scripts | Common) (Inherited | Me | Mn)*)*`"""
+    buf = []
+    for c in s:
+        script = sc(c)
+        cat = category(c)
+        if script in scripts or script == ScriptProperty.COMMON:
+            buf.append(c)
+        elif buf and (script == ScriptProperty.INHERITED or cat == "Me" or cat == "Mn"):
+            buf.append(c)
+        else:
+            if buf:
+                yield "".join(buf)
+                buf.clear()
+            yield c
+    if buf:
+        yield "".join(buf)
 
-def sc(c: str | int, /) -> ScriptProperty:
-    return _SCRIPT_PROP_LIST[_tst[c]]
 
+SCX_COMMON: SCXSet = frozenset({ScriptProperty.COMMON})
+SCX_INHERITED: SCXSet = frozenset({ScriptProperty.INHERITED})
+SCX_UNKNOWN: SCXSet = frozenset({ScriptProperty.UNKNOWN})
 
-def _read_ucd_sc():
-    with SCRIPTS_PATH.open("r", encoding="utf-8", errors="strict") as sc_txt:
-        for token in ucd_tokenize(sc_txt, keep_missing_lines=False):
-            code_points, script = token
-            script_prop = ScriptProperty(script)
-            s, dots, e = code_points.partition("..")
-            start_cp = int(s, base=16)
-            if dots:
-                end_cp = int(e, base=16)
-            else:
-                end_cp = start_cp
-            _tst.insert(start_cp, end_cp, _SCRIPT_PROP_INDICES[script_prop])
-
-
-_read_ucd_sc()
-_tst.compress_planes(0x20000, 0x38FFF)
-
-SCX_COMMON = frozenset({ScriptProperty.COMMON})
-SCX_INHERITED = frozenset({ScriptProperty.INHERITED})
-SCX_UNKNOWN = frozenset({ScriptProperty.UNKNOWN})
-
-# Only a very small number of code points have scx listings in the file
-# Hence, we implement _scx as a flat map
-_scx: dict[int, Set[ScriptProperty]] = {}
-
+# Since only a very small number of code points have explicit scx listings in the file,
+# we can implement _scx as a simple dict
+_scx: dict[int, SCXSet] = {}
 
 def _read_ucd_scx():
+    # scx file is special
     with SCRIPT_EXTENSIONS_PATH.open("r", encoding="utf-8", errors="strict") as scx_txt:
-        ucd_tokenize(scx_txt)
         for token in ucd_tokenize(scx_txt, keep_missing_lines=False):
             code_points, scx = token
             scx_prop = {ScriptProperty(s) for s in scx.strip().split()}
@@ -284,8 +256,7 @@ def _read_ucd_scx():
 
 _read_ucd_scx()
 
-
-def scx_set(c: str | int, /) -> Set[ScriptProperty]:
+def scx_set(c: str | int, /) -> SCXSet:
     """
     Gets the Scx Set (https://www.unicode.org/reports/tr24/#Script_Extensions) of a code point.
     If there are explicit scx values in the data file,
@@ -294,10 +265,11 @@ def scx_set(c: str | int, /) -> Set[ScriptProperty]:
     if cp in _scx:
         # LBYL, because most code points are not in _scx
         return _scx[cp]
-    return _SC_SCX_SETS[_tst[c]]
+    return {sc(cp)}
 
 
-def scx_set_grapheme(grapheme: str, /) -> Set[ScriptProperty]:
+@lru_cache
+def scx_set_grapheme(grapheme: Grapheme, /) -> SCXSet:
     """Operates on a grapheme, and returns its scx set as recommended by UAX #24 Section 5.2."""
 
     # UAX #24 Section 5.2 (https://www.unicode.org/reports/tr24/#Nonspacing_Marks)
@@ -306,16 +278,83 @@ def scx_set_grapheme(grapheme: str, /) -> Set[ScriptProperty]:
     # This strategy can also be applied to implementations that use extended grapheme clusters; the differences between
     # combining character sequences and extended grapheme clusters are not material for script resolution...
     # Because of this recommended strategy, even if a combining mark is really only used with a single script,
-    # it makes little difference in practice whether the mark has that particular Script property value or Inherited."
-    scx = SCX_COMMON
-    for c in grapheme:
-        x = scx_set(c)
-        if x != SCX_COMMON and x != SCX_INHERITED:
-            scx = x
-            break
-    return scx
+    # it makes little difference in practice whether the mark has that particular Script property value or Inherited.
 
-# def scx_set_text(graphemes: Iterable[str]) -> Iterable[tuple[str, Set[ScriptProperty]]]:
-    
-#     for grapheme in graphemes:
-#         ...
+    is_inherited = False
+    for i, c in enumerate(grapheme):
+        x = scx_set(c)
+        if x == SCX_INHERITED:
+            if i == 0:
+                is_inherited = True
+        elif x != SCX_COMMON:
+            return x
+    # If the sequence starts with inherited and contains no non-inherited/non-common, return inherited
+    return SCX_INHERITED if is_inherited else SCX_COMMON
+
+
+def scx_set_word(word: Word, /) -> SCXSet:
+    """Operates on the multiple graphemes in one single word.
+    Returns the applicable scx sets, narrowed by each grapheme cluster.
+    """
+    scx_sets: list[set[ScriptProperty]] = [set()]
+    fallback_inherit = True
+    for grapheme in word:
+        word_scx = scx_sets[-1]
+        grapheme_scx = scx_set_grapheme(grapheme)
+        if grapheme_scx == SCX_COMMON:
+            # Common grapheme can occur in isolation and should not affect the result.
+            fallback_inherit = False
+        elif grapheme_scx == SCX_INHERITED:
+            # Inherited grapheme should normally not occur in isolation, but if it ever does,
+            # it should also not affect the result.
+            pass
+        elif not word_scx:
+            # We're the first grapheme to have a "real" scx set
+            word_scx.update(grapheme_scx)
+        else:
+            overlap = word_scx.intersection(grapheme_scx)
+            if overlap:
+                # The word scx set is narrowed by the new grapheme
+                word_scx = overlap
+            else:
+                # The word contains graphemes with multiple disjoint scx sets
+                scx_sets.append(set(grapheme_scx))
+    if not scx_sets[0]:
+        # XXX: This has the effect of the pathological empty word returning SCX_INHERITED
+        # which is probably the useful behavior
+        return SCX_INHERITED if fallback_inherit else SCX_COMMON
+    return scx_sets[0].union(*scx_sets)
+
+
+multiscript_heuristics = {
+    "ja": {ScriptProperty.HIRAGANA, ScriptProperty.KATAKANA, ScriptProperty.HAN},
+}
+
+
+def scx_word_grouper(words: Iterable[Word], /) -> Iterable[tuple[SCXSet, Sequence[Word]]]:
+    group = []
+    group_scx = SCX_COMMON
+    for word in words:
+        scx = scx_set_word(word)
+        if scx == SCX_COMMON or scx == SCX_INHERITED:
+            pass
+        elif group_scx == SCX_COMMON:
+            group_scx = scx
+        else:
+            for lang, rule in multiscript_heuristics.items():
+                scx1 = rule.intersection(group_scx)
+                scx2 = rule.intersection(scx)
+                if scx1 and scx2:
+                    group_scx = {*scx1, *scx2}
+                    break
+            else:
+                if group_scx.isdisjoint(scx):
+                    if group:
+                        yield group_scx, group
+                        group = []
+                    group_scx = scx
+                else:
+                    group_scx = set(scx).intersection(group_scx)
+        group.append(word)
+    if group:
+        yield group_scx, group

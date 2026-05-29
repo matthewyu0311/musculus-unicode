@@ -111,6 +111,9 @@ RedundantTag = Literal[
 
 
 LanguageSubtag = NewType("LanguageSubtag", str)
+
+# TODO: harmonize ScriptSubtag with ScriptProperty. 
+# In effect, ScriptProperty should be considered a subtype of ScriptSubtag.
 ScriptSubtag = NewType("ScriptSubtag", str)
 RegionSubtag = NewType("RegionSubtag", str)
 VariantSubtag = NewType("VariantSubtag", str)

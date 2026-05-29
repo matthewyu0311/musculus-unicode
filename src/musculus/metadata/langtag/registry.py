@@ -38,7 +38,7 @@ from .subtag import (
 class RegistryMixin:
     __slots__ = ()
     date: dt.date | None
-    # The exact requirements of the mapping are too complex to be specified in type hints
+    # The exact requirements for the mapping are too complex to be specified in type hints
     languages: Mapping[LanguageSubtag, Mapping]
     macrolanguages: Mapping[LanguageSubtag, Set[LanguageSubtag]]
     scripts: Mapping[ScriptSubtag, Mapping]
@@ -677,7 +677,7 @@ if TYPE_CHECKING:
         extensions = {}  # type: ignore
         macrolanguages = {}  # type: ignore
         languages = {}  # type: ignore
-        languages_invers = {}  # type: ignore
+        languages_inverse = {}  # type: ignore
         scripts = {}  # type: ignore
         scripts_inverse = {}  # type: ignore
         regions = {}  # type: ignore

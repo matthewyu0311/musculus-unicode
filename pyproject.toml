@@ -114,7 +114,7 @@ classifiers = [
 # For an analysis of this field vs pip's requirements files see:
 # https://packaging.python.org/discussions/install-requires-vs-requirements/
 dependencies = [
-  "musculus-base"
+  "musculus-base", "icu4py"
 ]
 
 # List additional groups of dependencies here (e.g. development
